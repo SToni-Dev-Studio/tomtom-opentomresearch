@@ -142,10 +142,13 @@ that the network-status build is loaded and connected. A later full-volume
 backup before staging the updater is
 `/home/sepisotoni/tomtom-one-v6-backup-20260926/usb-files-pre-updater-20260926T2110.tar.gz`.
 The C updater, checksummed package, startup autostart, face-switch helper,
-and menu entry have now been copied to the mounted TomTom storage. The new
-startup and menu behavior takes effect on the next device boot. The startup
-retains the existing power-button command. The updater only replaces the
-watchface and its config; it does not update the kernel or power-button code.
+and menu entry were copied to the TomTom storage. The repaired, larger-digit
+watchface has been rebuilt and packaged; the USB volume is currently
+disconnected, so that replacement binary still needs to be copied in storage
+mode. The new startup and menu behavior takes effect on the next device boot.
+The startup retains the existing power-button command. The updater only
+replaces the watchface and its config; it does not update the kernel or
+power-button code.
 
 Do not replace `ttsystem` or reboot the device using the available
 `2.6.13-LeddaZ` build; it does not match the running `2.6.13-tt190943` kernel.

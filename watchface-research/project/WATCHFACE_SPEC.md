@@ -21,13 +21,17 @@ physical-device validation.
 | Face | Direction |
 |---|---|
 | Frost | Cyan outline numerals on a black background |
-| Aqua | Cyan/blue accents with a restrained wave motif |
+| Aqua | Electric cyan/blue digits with a subtle colon pulse |
 | Lavender | Soft lavender solid digits |
 | Sunset | Tangerine and rose accents |
 | Telemetry | Blue accents and only real device data |
 
-The default is **12-hour, horizontal `HH:MM`** with an AM/PM badge; on the
-hour, the hour digits expand and the minutes are omitted. Configuration can
+The default is **12-hour, horizontal `HH:MM`** with an AM/PM badge; at `:00`,
+the minutes are intentionally omitted and the hour digits expand. The same
+large `HH:MM` layout now uses 70x110-pixel digits instead of 52x88, keeps
+the time in a fixed position, and redraws the whole face only when the
+displayed minute changes. This avoids stale partial-draw fragments and keeps
+the on-the-hour transition intentional. Configuration can
 select horizontal or stacked layout, 12/24-hour time, AM/PM visibility, and
 the initial face. Command-line switches override layout and time-format
 settings. The startup template launches the configured default face after
@@ -35,7 +39,9 @@ Nano-X starts. A touchscreen button-down cycles faces; `watchface_next`
 sends `SIGUSR1` to the running app, or starts it if it is not running. The
 menu invokes this helper so it will not open a duplicate instance. Face
 transitions and exposure events redraw the face, while ordinary updates
-redraw changed digit/text regions; the aqua accent animates once per second.
+redraw changed digit/text regions. Face changes and minute changes use a clean full redraw. A small
+colon pulse updates once per second; the heavier moving wave animation was
+removed so the digits stay visually clean.
 
 Telemetry reads uptime, load averages, memory, local/UTC time, and network
 state from Linux interfaces. It distinguishes the `usb0` gadget link and

@@ -10,12 +10,12 @@
  *  - STACKED (Top-and-Bottom: HH over MM)
  *
  * Sizing & On-The-Hour Scaling:
- *  - Regular Side-by-Side: 52px x 88px digits (Scale 2), perfectly proportioned.
- *  - On-the-hour: Expands to 104px x 176px hero digits, centered prominently.
+ *  - Regular Side-by-Side: 70px x 110px digits, centered and easy to read.
+ *  - On-the-Hour: Expands to 112px x 176px hour digits, centered prominently.
  *
  * 5 Modular Faces (Pitch black background, vivid numerals, no enclosing box):
  *  0: Frost Outline   (Luminous vector-stroke cyan outline on pitch black - User favorite)
- *  1: Hydro Aqua Wave (Electric hydro cyan & marine blue with dynamic wave divider)
+ *  1: Aqua (Electric cyan/blue numerals with a low-cost colon pulse)
  *  2: Solid Lavender  (Radiant soft lavender bold numerals, Apple Watch ref left)
  *  3: Vivid Sunset    (Solar tangerine hours & electric rose minutes)
  *  4: Real Telemetry  (Live OS metrics fetched from /proc/uptime, loadavg, meminfo, Paris DST)
@@ -26,9 +26,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <signal.h>
 #include <time.h>
-#include <math.h>
 #include <unistd.h>
 #include <errno.h>
 #include <net/if.h>
@@ -42,21 +42,22 @@
 #define SCREEN_W 320
 #define SCREEN_H 240
 
-#define GLYPH_W  26
+#define GLYPH_W  28
 #define GLYPH_H  44
 
-#define SCALE_NORMAL 2
-#define DIGIT_W      (GLYPH_W * SCALE_NORMAL) /* 52 px */
-#define DIGIT_H      (GLYPH_H * SCALE_NORMAL) /* 88 px */
-#define DIGIT_GAP    6                        /* 6 px gap */
-
-#define SCALE_HERO   4
-#define HERO_W       (GLYPH_W * SCALE_HERO)   /* 104 px */
-#define HERO_H       (GLYPH_H * SCALE_HERO)   /* 176 px */
-#define HERO_GAP     10                       /* 10 px gap */
+#define SCALE_NORMAL 5 /* Numerator for a 2.5x integer-pixel glyph scale */
+#define DIGIT_W      (GLYPH_W * SCALE_NORMAL / 2) /* 70 px */
+#define DIGIT_H      (GLYPH_H * SCALE_NORMAL / 2) /* 110 px */
+#define DIGIT_GAP    4                        /* 4 px gap */
+#define COLON_W      20
 
 #define LAYOUT_HORIZONTAL 0
 #define LAYOUT_STACKED    1
+
+#define SCALE_HERO 8
+#define HERO_W     (GLYPH_W * SCALE_HERO / 2)
+#define HERO_H     (GLYPH_H * SCALE_HERO / 2)
+#define HERO_GAP   10
 
 #define FACE_FROST_OUTLINE  0
 #define FACE_HYDRO_AQUA     1
@@ -65,7 +66,7 @@
 #define FACE_REAL_TELEMETRY 4
 #define FACE_COUNT          5
 
-/* Precomputed vector bitmasks for digits 0-9 (26x44 grid in 32-bit words) */
+/* Precomputed vector bitmasks for digits 0-9 (28x44 grid in 32-bit words) */
 static const unsigned long digit_glyph_solid[10][44] = {
   /* Digit 0 */
   { 0x003ff00UL, 0x01fffe0UL, 0x07ffff8UL, 0x0fffffcUL,
@@ -323,7 +324,6 @@ typedef struct {
 	GR_COLOR min_color;
 	GR_COLOR date_color;
 	int is_outline;
-	int has_hydro_wave;
 	OverlayDrawHook custom_overlay; /* Plugin hook: weather, sensors, complications */
 } WatchFace;
 
@@ -353,6 +353,7 @@ static int last_display_hour = -1;
 static int last_minute = -1;
 static int last_second = -1;
 static int last_is_pm = -1;
+static int last_hour_only = -1;
 
 /* Signal handler for face rotation */
 static void
@@ -405,14 +406,14 @@ load_configuration(void)
 	fclose(fp);
 }
 
-/* Fast rasterizer: draws a digit using run-length spans with arbitrary scale factor */
+/* Draw a digit using run-length spans at scale/2, distributing odd pixels. */
 static void
 draw_digit_scaled(int x_origin, int y_origin, int digit, int outline, GR_COLOR color, int scale)
 {
 	int y, x;
 	const unsigned long (*glyphs)[44] = outline ? digit_glyph_outline : digit_glyph_solid;
 
-	if (digit < 0 || digit > 9 || scale <= 0)
+	if (digit < 0 || digit > 9 || scale < 2)
 		return;
 
 	GrSetGCForeground(gc, color);
@@ -432,11 +433,15 @@ draw_digit_scaled(int x_origin, int y_origin, int digit, int outline, GR_COLOR c
 					span_len++;
 					x++;
 				}
-				GrFillRect(window, gc,
-					   x_origin + start_x * scale,
-					   y_origin + y * scale,
-					   span_len * scale,
-					   scale);
+				{
+					int left = start_x * scale / 2;
+					int right = (start_x + span_len) * scale / 2;
+					int top = y * scale / 2;
+					int bottom = (y + 1) * scale / 2;
+					GrFillRect(window, gc,
+						   x_origin + left, y_origin + top,
+						   right - left, bottom - top);
+				}
 			} else {
 				x++;
 			}
@@ -650,26 +655,6 @@ draw_colon_dots(int center_x, int base_y, GR_COLOR color)
 	GrFillRect(window, gc, center_x - 3, base_y + 56, 7, 7);
 }
 
-/* Renders the dynamic hydro wave line */
-static void
-draw_hydro_wave(int second, int full_redraw, int y_pos)
-{
-	int x;
-	double phase = (double)(second % 60) * 0.18;
-
-	if (full_redraw) {
-		GrSetGCForeground(gc, GR_RGB(0, 0, 0));
-		GrFillRect(window, gc, 36, y_pos - 6, 248, 12);
-	}
-
-	GrSetGCForeground(gc, GR_RGB(0, 245, 255));
-	for (x = 40; x <= 280; x += 2) {
-		int wy = y_pos + (int)(sin((double)x * 0.08 + phase) * 3.5);
-		GrPoint(window, gc, x, wy);
-		GrPoint(window, gc, x, wy + 1);
-	}
-}
-
 /* Real Telemetry Page: Fetches genuine Linux metrics (Zero mock data) */
 static void
 draw_telemetry_overlay(const struct tm *local, int full_redraw)
@@ -790,22 +775,20 @@ static const WatchFace watch_faces[FACE_COUNT] = {
 	{
 		"Frost Outline",
 		GR_RGB(0, 0, 0),         /* Pitch black night-friendly background */
-		GR_RGB(130, 235, 255),   /* Luminous icy cyan outline */
-		GR_RGB(130, 235, 255),   /* Matching minute outline */
-		GR_RGB(100, 160, 200),   /* Subtle date stamp */
+		GR_RGB(72, 230, 245),    /* Vivid cyan outline */
+		GR_RGB(72, 230, 245),    /* Matching minute outline */
+		GR_RGB(100, 175, 205),   /* Subtle date stamp */
 		1,                       /* Outline = TRUE */
-		0,                       /* No wave */
 		NULL                     /* Standard overlay */
 	},
-	/* Face 1: Hydro Aqua Wave (User favorite #2) */
+	/* Face 1: Aqua solid digits */
 	{
-		"Hydro Aqua Wave",
+		"Aqua",
 		GR_RGB(0, 0, 0),         /* Pitch black background */
 		GR_RGB(0, 245, 255),     /* Electric hydro cyan */
-		GR_RGB(20, 180, 255),    /* Marine wave blue */
+		GR_RGB(20, 180, 255),    /* Marine blue minutes */
 		GR_RGB(60, 200, 230),    /* Date stamp */
-		0,                       /* Solid = TRUE */
-		1,                       /* Has dynamic hydro wave */
+		0,
 		NULL
 	},
 	/* Face 2: Solid Lavender (Apple Watch Reference Left) */
@@ -815,7 +798,6 @@ static const WatchFace watch_faces[FACE_COUNT] = {
 		GR_RGB(232, 218, 242),   /* Soft vivid lavender */
 		GR_RGB(218, 196, 236),   /* Harmonious lilac */
 		GR_RGB(160, 145, 185),   /* Date stamp */
-		0,
 		0,
 		NULL
 	},
@@ -827,7 +809,6 @@ static const WatchFace watch_faces[FACE_COUNT] = {
 		GR_RGB(255, 125, 215),   /* Electric rose magenta */
 		GR_RGB(200, 110, 140),   /* Date stamp */
 		0,
-		0,
 		NULL
 	},
 	/* Face 4: Real Telemetry (Zero mock data, pulls live OS data) */
@@ -838,217 +819,158 @@ static const WatchFace watch_faces[FACE_COUNT] = {
 		GR_RGB(147, 197, 253),
 		GR_RGB(148, 163, 184),
 		0,
-		0,
 		draw_telemetry_overlay   /* Calls real live telemetry renderer */
 	}
 };
 
-/* Renders side-by-side horizontal layout with enlarged digits and giant on-the-hour size */
+/* Render large HH:MM digits; the colon pulses independently once per second. */
 static void
 render_horizontal_face(const struct tm *local, int full_redraw)
 {
 	const WatchFace *face = &watch_faces[current_face_idx];
+	char date_str[32];
 	int raw_hour = local->tm_hour;
-	int is_pm = (raw_hour >= 12);
-	int display_hour;
-	int min = local->tm_min;
-	int sec = local->tm_sec;
-	int is_on_the_hour = (min == 0);
+	int is_pm = raw_hour >= 12;
+	int display_hour = cfg_12hour ?
+		(raw_hour % 12 ? raw_hour % 12 : 12) : raw_hour;
+	int minute = local->tm_min;
+	int pair_width = 2 * DIGIT_W + DIGIT_GAP;
+	int total_width = 2 * pair_width + COLON_W;
+	int left = (screen_width - total_width) / 2;
+	int hour_x = left;
+	int colon_x = left + pair_width + COLON_W / 2;
+	int minute_x = left + pair_width + COLON_W;
+	int top = (screen_height - DIGIT_H) / 2;
+	int hour_only = (minute == 0);
+	int changed = full_redraw || display_hour != last_display_hour ||
+		minute != last_minute || is_pm != last_is_pm ||
+		hour_only != last_hour_only;
+	int i;
 
-	/* Coordinates for regular side-by-side (Scale 2, 52x88) */
-	int base_y = 76;
-	int h_pair_w = 2 * DIGIT_W + DIGIT_GAP; /* 110 px */
-	int m_pair_w = 2 * DIGIT_W + DIGIT_GAP; /* 110 px */
-	int colon_w = 24;
-	int total_w = h_pair_w + colon_w + m_pair_w; /* 244 px */
-	int h_x1 = (screen_width - total_w) / 2;     /* 38 px */
-	int colon_cx = h_x1 + h_pair_w + (colon_w / 2); /* 160 px */
-	int m_x1 = colon_cx + (colon_w / 2);         /* 172 px */
-
-	/* Coordinates for EXPANDED ON-THE-HOUR HERO SIZE (Scale 4, 104x176) */
-	int hero_pair_w = 2 * HERO_W + HERO_GAP;    /* 218 px */
-	int hero_x1 = (screen_width - hero_pair_w) / 2; /* 51 px centered! */
-	int hero_y = 38;                            /* Centered vertically on 240px */
-
-	if (cfg_12hour) {
-		display_hour = raw_hour % 12;
-		if (display_hour == 0)
-			display_hour = 12;
-	} else {
-		display_hour = raw_hour;
+	if (!changed) {
+		if (local->tm_sec != last_second) {
+			if (!hour_only) {
+				GrSetGCForeground(gc, face->bg_color);
+				GrFillRect(window, gc, colon_x - 5, top + 20, 10, 44);
+				draw_colon_dots(colon_x, top,
+						(local->tm_sec & 1) ?
+						GR_RGB(32, 80, 95) : face->hour_color);
+			}
+			last_second = local->tm_sec;
+		}
+		return;
 	}
 
-	if (full_redraw || (is_on_the_hour && last_minute != 0) || (!is_on_the_hour && last_minute == 0)) {
-		char date_str[32];
+	GrSetGCForeground(gc, face->bg_color);
+	GrFillRect(window, gc, 0, 0, screen_width, screen_height);
 
-		/* Clean screen with pitch black */
-		GrSetGCForeground(gc, face->bg_color);
-		GrFillRect(window, gc, 0, 0, screen_width, screen_height);
+	if (strftime(date_str, sizeof(date_str), "%a  %d %b", local) == 0)
+		strcpy(date_str, "DATE");
+	for (i = 0; date_str[i]; i++)
+		date_str[i] = (char)toupper((unsigned char)date_str[i]);
+	draw_centered_text(date_str, 28, face->date_color);
+	if (cfg_12hour && cfg_show_ampm)
+		draw_ampm_indicator(is_pm, face->date_color, 28);
 
-		/* Top subtle date stamp centered at y = 28 */
-		strftime(date_str, sizeof(date_str), "%a  %d %b", local);
-		draw_centered_text(date_str, 28, face->date_color);
+	if (hour_only) {
+		int hero_width = 2 * HERO_W + HERO_GAP;
+		int hero_x = (screen_width - hero_width) / 2;
+		int hero_y = (screen_height - HERO_H) / 2;
 
-		/* AM/PM indicator badge (if enabled) */
-		if (cfg_12hour && cfg_show_ampm)
-			draw_ampm_indicator(is_pm, face->date_color, 28);
-
-		if (is_on_the_hour) {
-			/* Expand the hour digits when the minutes are zero. */
-			draw_digit_scaled(hero_x1, hero_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_HERO);
-			draw_digit_scaled(hero_x1 + HERO_W + HERO_GAP, hero_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_HERO);
-		} else {
-			/* REGULAR MINUTES: Hours, glowing colon dots, and Minutes */
-			draw_digit_scaled(h_x1, base_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-			draw_digit_scaled(h_x1 + DIGIT_W + DIGIT_GAP, base_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-			draw_colon_dots(colon_cx, base_y, face->hour_color);
-			draw_digit_scaled(m_x1, base_y, min / 10, face->is_outline, face->min_color, SCALE_NORMAL);
-			draw_digit_scaled(m_x1 + DIGIT_W + DIGIT_GAP, base_y, min % 10, face->is_outline, face->min_color, SCALE_NORMAL);
-		}
-		last_display_hour = display_hour;
-		last_minute = min;
-
-		/* Dynamic hydro wave accent underneath */
-		if (face->has_hydro_wave)
-			draw_hydro_wave(sec, 1, is_on_the_hour ? 202 : 182);
-
-		last_second = sec;
-		last_is_pm = is_pm;
+		draw_digit_scaled(hero_x, hero_y, display_hour / 10,
+				  face->is_outline, face->hour_color, SCALE_HERO);
+		draw_digit_scaled(hero_x + HERO_W + HERO_GAP, hero_y,
+				  display_hour % 10, face->is_outline,
+				  face->hour_color, SCALE_HERO);
 	} else {
-		/* Partial dirty redraw */
-		if (!is_on_the_hour) {
-			if (display_hour != last_display_hour) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, h_x1, base_y, h_pair_w, DIGIT_H);
-				draw_digit_scaled(h_x1, base_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-				draw_digit_scaled(h_x1 + DIGIT_W + DIGIT_GAP, base_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-				last_display_hour = display_hour;
-			}
-
-			if (min != last_minute) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, m_x1, base_y, m_pair_w, DIGIT_H);
-				draw_digit_scaled(m_x1, base_y, min / 10, face->is_outline, face->min_color, SCALE_NORMAL);
-				draw_digit_scaled(m_x1 + DIGIT_W + DIGIT_GAP, base_y, min % 10, face->is_outline, face->min_color, SCALE_NORMAL);
-				last_minute = min;
-			}
-		} else {
-			if (display_hour != last_display_hour) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, hero_x1, hero_y, hero_pair_w, HERO_H);
-				draw_digit_scaled(hero_x1, hero_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_HERO);
-				draw_digit_scaled(hero_x1 + HERO_W + HERO_GAP, hero_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_HERO);
-				last_display_hour = display_hour;
-			}
-		}
-
-		if (cfg_12hour && cfg_show_ampm && (is_pm != last_is_pm)) {
-			draw_ampm_indicator(is_pm, face->date_color, 28);
-			last_is_pm = is_pm;
-		}
-
-		if (face->has_hydro_wave)
-			draw_hydro_wave(sec, 0, is_on_the_hour ? 202 : 182);
-
-		last_second = sec;
+		draw_digit_scaled(hour_x, top, display_hour / 10,
+				  face->is_outline, face->hour_color, SCALE_NORMAL);
+		draw_digit_scaled(hour_x + DIGIT_W + DIGIT_GAP, top,
+				  display_hour % 10, face->is_outline,
+				  face->hour_color, SCALE_NORMAL);
+		draw_colon_dots(colon_x, top,
+				(local->tm_sec & 1) ? GR_RGB(32, 80, 95) :
+				face->hour_color);
+		draw_digit_scaled(minute_x, top, minute / 10,
+				  face->is_outline, face->min_color, SCALE_NORMAL);
+		draw_digit_scaled(minute_x + DIGIT_W + DIGIT_GAP, top,
+				  minute % 10, face->is_outline,
+				  face->min_color, SCALE_NORMAL);
 	}
+
+	last_display_hour = display_hour;
+	last_minute = minute;
+	last_second = local->tm_sec;
+	last_is_pm = is_pm;
+	last_hour_only = hour_only;
 }
 
-/* Renders stacked layout */
+/* Alternate stacked layout, using a smaller fixed digit size to avoid clipping. */
 static void
 render_stacked_face(const struct tm *local, int full_redraw)
 {
 	const WatchFace *face = &watch_faces[current_face_idx];
+	char date_str[32];
 	int raw_hour = local->tm_hour;
-	int is_pm = (raw_hour >= 12);
-	int display_hour;
-	int min = local->tm_min;
-	int sec = local->tm_sec;
-	int is_on_the_hour = (min == 0);
+	int is_pm = raw_hour >= 12;
+	int display_hour = cfg_12hour ?
+		(raw_hour % 12 ? raw_hour % 12 : 12) : raw_hour;
+	int minute = local->tm_min;
+	int scale = 3;
+	int digit_width = GLYPH_W * scale / 2;
+	int digit_height = GLYPH_H * scale / 2;
+	int pair_width = 2 * digit_width + 10;
+	int x = (screen_width - pair_width) / 2;
+	int hour_y = 44;
+	int minute_y = 44 + digit_height + 16;
+	int hour_only = (minute == 0);
+	int changed = full_redraw || display_hour != last_display_hour ||
+		minute != last_minute || is_pm != last_is_pm ||
+		hour_only != last_hour_only;
+	int i;
 
-	int pair_w = 2 * DIGIT_W + 10;
-	int x1 = (screen_width - pair_w) / 2;
-	int hour_y = is_on_the_hour ? 56 : 18;
-	int min_y = hour_y + DIGIT_H + 12;
-
-	/* On the hour: expanded hero size */
-	int hero_pair_w = 2 * HERO_W + HERO_GAP;
-	int hero_x1 = (screen_width - hero_pair_w) / 2;
-	int hero_y = 38;
-
-	if (cfg_12hour) {
-		display_hour = raw_hour % 12;
-		if (display_hour == 0)
-			display_hour = 12;
-	} else {
-		display_hour = raw_hour;
+	if (!changed) {
+		last_second = local->tm_sec;
+		return;
 	}
 
-	if (full_redraw || (is_on_the_hour && last_minute != 0) || (!is_on_the_hour && last_minute == 0)) {
-		char date_str[32];
+	GrSetGCForeground(gc, face->bg_color);
+	GrFillRect(window, gc, 0, 0, screen_width, screen_height);
+	if (strftime(date_str, sizeof(date_str), "%a  %d %b", local) == 0)
+		strcpy(date_str, "DATE");
+	for (i = 0; date_str[i]; i++)
+		date_str[i] = (char)toupper((unsigned char)date_str[i]);
+	draw_centered_text(date_str, 24, face->date_color);
+	if (cfg_12hour && cfg_show_ampm)
+		draw_ampm_indicator(is_pm, face->date_color, 24);
 
-		GrSetGCForeground(gc, face->bg_color);
-		GrFillRect(window, gc, 0, 0, screen_width, screen_height);
+	if (hour_only) {
+		int hero_width = 2 * HERO_W + HERO_GAP;
+		int hero_x = (screen_width - hero_width) / 2;
+		int hero_y = (screen_height - HERO_H) / 2;
 
-		strftime(date_str, sizeof(date_str), "%a  %d %b", local);
-		draw_centered_text(date_str, 20, face->date_color);
-
-		if (cfg_12hour && cfg_show_ampm)
-			draw_ampm_indicator(is_pm, face->date_color, 20);
-
-		if (is_on_the_hour) {
-			draw_digit_scaled(hero_x1, hero_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_HERO);
-			draw_digit_scaled(hero_x1 + HERO_W + HERO_GAP, hero_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_HERO);
-		} else {
-			draw_digit_scaled(x1, hour_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-			draw_digit_scaled(x1 + DIGIT_W + 10, hour_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-			draw_digit_scaled(x1, min_y, min / 10, face->is_outline, face->min_color, SCALE_NORMAL);
-			draw_digit_scaled(x1 + DIGIT_W + 10, min_y, min % 10, face->is_outline, face->min_color, SCALE_NORMAL);
-			if (face->has_hydro_wave)
-				draw_hydro_wave(sec, 1, 112);
-		}
-		last_display_hour = display_hour;
-		last_minute = min;
-
-		last_second = sec;
-		last_is_pm = is_pm;
+		draw_digit_scaled(hero_x, hero_y, display_hour / 10,
+				  face->is_outline, face->hour_color, SCALE_HERO);
+		draw_digit_scaled(hero_x + HERO_W + HERO_GAP, hero_y,
+				  display_hour % 10, face->is_outline,
+				  face->hour_color, SCALE_HERO);
 	} else {
-		if (is_on_the_hour) {
-			if (display_hour != last_display_hour) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, hero_x1, hero_y, hero_pair_w, HERO_H);
-				draw_digit_scaled(hero_x1, hero_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_HERO);
-				draw_digit_scaled(hero_x1 + HERO_W + HERO_GAP, hero_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_HERO);
-				last_display_hour = display_hour;
-			}
-		} else {
-			if (display_hour != last_display_hour) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, x1, hour_y, pair_w, DIGIT_H);
-				draw_digit_scaled(x1, hour_y, display_hour / 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-				draw_digit_scaled(x1 + DIGIT_W + 10, hour_y, display_hour % 10, face->is_outline, face->hour_color, SCALE_NORMAL);
-				last_display_hour = display_hour;
-			}
-
-			if (min != last_minute) {
-				GrSetGCForeground(gc, face->bg_color);
-				GrFillRect(window, gc, x1, min_y, pair_w, DIGIT_H);
-				draw_digit_scaled(x1, min_y, min / 10, face->is_outline, face->min_color, SCALE_NORMAL);
-				draw_digit_scaled(x1 + DIGIT_W + 10, min_y, min % 10, face->is_outline, face->min_color, SCALE_NORMAL);
-				last_minute = min;
-			}
-
-			if (face->has_hydro_wave)
-				draw_hydro_wave(sec, 0, 112);
-		}
-
-		if (cfg_12hour && cfg_show_ampm && (is_pm != last_is_pm)) {
-			draw_ampm_indicator(is_pm, face->date_color, 20);
-			last_is_pm = is_pm;
-		}
-
-		last_second = sec;
+		draw_digit_scaled(x, hour_y, display_hour / 10, face->is_outline,
+				  face->hour_color, scale);
+		draw_digit_scaled(x + digit_width + 10, hour_y,
+				  display_hour % 10, face->is_outline,
+				  face->hour_color, scale);
+		draw_digit_scaled(x, minute_y, minute / 10, face->is_outline,
+				  face->min_color, scale);
+		draw_digit_scaled(x + digit_width + 10, minute_y, minute % 10,
+				  face->is_outline, face->min_color, scale);
 	}
+
+	last_display_hour = display_hour;
+	last_minute = minute;
+	last_second = local->tm_sec;
+	last_is_pm = is_pm;
+	last_hour_only = hour_only;
 }
 
 /* Master face render router */
