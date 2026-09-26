@@ -35,19 +35,33 @@ settings. A touchscreen button-down cycles faces; `watchface_next` sends
 events redraw the face, while ordinary updates redraw changed digit/text
 regions; the aqua accent animates once per second.
 
-Telemetry reads uptime, load averages, memory, and local/UTC time from system
-interfaces. Failed metric reads now display `unavailable`, not zero. The
-implementation uses a one-second event wait. These are source-level
-observations only: the face variants, config parsing, and animation have not
-been installed or visually tested on the device. A prior device measurement
-of the older running app was 696 kB RSS with no CPU tick increase over one
-10-second idle sample; it does not validate this version's runtime usage.
+Telemetry reads uptime, load averages, memory, local/UTC time, and network
+state from Linux interfaces. It distinguishes the `usb0` gadget link and
+`eth0` wired link from a default route; a route is not proof of internet
+access. Initial network state is read once, then link, address, and route
+changes are received through a `NETLINK_ROUTE` socket. There are no ICMP
+pings or periodic network probes. If the event monitor cannot be opened, the
+page shows a warning. Failed metric reads display `unavailable`, not zero.
+Network-state redraws are limited to the status rows. The one-second event
+wait remains for clock and telemetry updates.
+
+The network-enabled source has been cross-compiled warning-free with the
+bundled ARM GCC 3.3.4 and staged to the device's USB storage along with the
+12-hour horizontal configuration. Runtime link reporting and the new face
+geometry have not yet been verified on the physical screen. A prior device
+measurement of the older running app was 696 kB RSS with no CPU tick increase
+over one 10-second idle sample; it does not validate this version's runtime
+usage.
 
 ## Future work and limits
 
 There is no settings page and no live config reload yet; edits to
-`watchface.cfg` take effect when the app is restarted. Keep future extensions
-native C and avoid JSON/runtime settings until the UI behavior is designed.
+`watchface.cfg` take effect when the app is restarted. The overlay callback is
+the extension point for future local weather or media providers; do not
+fabricate values or add background polling. Keep future extensions native C
+and avoid JSON/runtime settings until the UI behavior is designed. A
+transactional live updater is not included; preserve the prior executable
+before swapping app files and keep all kernel/`ttsystem` work separate.
 
 The incoming spec's hard RAM/CPU ceilings and sub-millisecond rendering claim
 are not verified and are intentionally not repeated as guarantees. Build
@@ -58,8 +72,9 @@ screen can verify final geometry, touch behavior, and visual quality.
 
 - The app uses the supplied Nano-X API and C89-style constructs compatible
   with the bundled ARM GCC 3.3.4.
-- The imported upstream startup script and power helper were not copied:
-  startup must preserve the separate 10-second GPIO/power-button draft, and
-  the watchface feature does not require a power-handler change.
+- The USB volume's startup script and power helper were not changed:
+  the separate 10-second GPIO/power-button draft is not built for the
+  verified `2.6.13-tt190943` kernel, and the available kernel build reports
+  `2.6.13-LeddaZ`.
 - The upstream repository's `TomTom 1 Project/` vendor backup remains
   excluded from this research repository.

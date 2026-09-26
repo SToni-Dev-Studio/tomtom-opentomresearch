@@ -26,8 +26,9 @@ or browser-only mockups.
 ## Contents
 
 - `project/applications/src/tools/watchface.c`: five native watch-face modes,
-  12-hour horizontal default, config options, telemetry page, and partial
-  updates. See `project/WATCHFACE_SPEC.md` for behavior/validation status.
+  12-hour horizontal default, config options, event-driven USB/Ethernet and
+  route status on the telemetry page, and partial updates. See
+  `project/WATCHFACE_SPEC.md` for behavior/validation status.
 - `project/src/opentom_skel/etc/watchface.cfg`: default 12-hour horizontal
   layout, AM/PM indicator, and initial face.
 - `project/src/opentom_skel/bin/watchface_next`: signal-based face switch.
@@ -108,9 +109,9 @@ device-side test.
 
 ## Build check without replacing the full checkout's source
 
-The handoff does not include the cross-toolchain. Use the bundled
-`LeddaZ-OpenTom` toolchain, but compile this staged source directly to `/tmp`
-so the full checkout's existing local watchface work is not overwritten:
+Use the bundled `LeddaZ-OpenTom` toolchain, compiling this staged source
+directly to `/tmp` so the full checkout's existing local watchface work is not
+overwritten:
 
 ```sh
 HANDOFF=/path/to/tomtom-opentomresearch/watchface-research
@@ -125,6 +126,13 @@ source get_cross_env.sh
 file /tmp/watchface
 ```
 
-The expected result is a warning-clean 32-bit ARM ELF. Do not install the
-result, modify `ttsystem`, rebuild kernel modules, or reboot the device as
-part of this handoff work.
+The result should be a warning-clean 32-bit ARM ELF linked against the
+existing Nano-X library. The USB-volume snapshot is stored outside the repo
+at `/home/sepisotoni/tomtom-one-v6-backup-20260926/`; the watchface and its
+configuration have been staged there after a verified backup. The live
+screen has not been inspected since staging.
+
+Do not replace `ttsystem` or reboot the device using the available
+`2.6.13-LeddaZ` build; it does not match the running `2.6.13-tt190943` kernel.
+The power-button startup remains unchanged. There is no verified
+`tt190943`-matching kernel source/config/toolchain yet.

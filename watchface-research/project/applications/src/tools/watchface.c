@@ -30,6 +30,12 @@
 #include <time.h>
 #include <math.h>
 #include <unistd.h>
+#include <errno.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "nano-X.h"
 
@@ -332,6 +338,12 @@ static GR_GC_ID gc;
 static GR_FONT_ID detail_font;
 static volatile sig_atomic_t face_change_requested;
 static int current_face_idx = FACE_FROST_OUTLINE;
+static int network_control_fd = -1;
+static int network_events_fd = -1;
+static int network_monitor_available = 0;
+static int usb_link_state = -2;
+static int ethernet_link_state = -2;
+static char default_route[IFNAMSIZ];
 
 static GR_SIZE screen_width = SCREEN_W;
 static GR_SIZE screen_height = SCREEN_H;
@@ -442,6 +454,174 @@ draw_centered_text(const char *text, GR_COORD baseline_y, GR_COLOR color)
 	GrSetGCFont(gc, detail_font);
 	GrGetGCTextSize(gc, (void *)text, -1, GR_TFBASELINE, &width, &height, &base);
 	GrText(window, gc, (screen_width - width) / 2, baseline_y, (void *)text, -1, GR_TFBASELINE);
+}
+
+static int
+read_link_state(const char *name)
+{
+	struct ifreq request;
+
+	if (network_control_fd < 0)
+		return -2;
+
+	memset(&request, 0, sizeof(request));
+	strncpy(request.ifr_name, name, sizeof(request.ifr_name) - 1);
+	if (ioctl(network_control_fd, SIOCGIFFLAGS, &request) < 0) {
+		if (errno == ENODEV || errno == ENXIO)
+			return -1;
+		return -2;
+	}
+
+	return (request.ifr_flags & IFF_RUNNING) ? 1 : 0;
+}
+
+static int
+read_default_route(char *interface, size_t interface_size)
+{
+	FILE *fp;
+	char line[256];
+
+	fp = fopen("/proc/net/route", "r");
+	if (!fp)
+		return -1;
+
+	interface[0] = '\0';
+	if (fgets(line, sizeof(line), fp)) {
+		while (fgets(line, sizeof(line), fp)) {
+			char name[IFNAMSIZ];
+			unsigned long destination, gateway;
+			unsigned int flags;
+
+			if (sscanf(line, "%15s %lx %lx %x",
+				   name, &destination, &gateway, &flags) == 4 &&
+			    destination == 0 && (flags & 1U)) {
+				snprintf(interface, interface_size, "%s", name);
+				break;
+			}
+		}
+	}
+
+	fclose(fp);
+	return 0;
+}
+
+static void
+refresh_network_status(void)
+{
+	usb_link_state = read_link_state("usb0");
+	ethernet_link_state = read_link_state("eth0");
+	if (read_default_route(default_route, sizeof(default_route)) < 0)
+		strcpy(default_route, "?");
+}
+
+static int
+setup_network_events(void)
+{
+	struct sockaddr_nl address;
+
+	network_control_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (network_control_fd < 0)
+		perror("watchface: network status socket");
+
+	network_events_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (network_events_fd < 0) {
+		perror("watchface: route event socket");
+		refresh_network_status();
+		return 0;
+	}
+
+	memset(&address, 0, sizeof(address));
+	address.nl_family = AF_NETLINK;
+	address.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR |
+			    RTMGRP_IPV4_ROUTE;
+	if (bind(network_events_fd, (struct sockaddr *)&address,
+		 sizeof(address)) < 0) {
+		perror("watchface: route event bind");
+		close(network_events_fd);
+		network_events_fd = -1;
+		refresh_network_status();
+		return 0;
+	}
+
+	network_monitor_available = 1;
+	refresh_network_status();
+	return 1;
+}
+
+static int
+process_network_events(void)
+{
+	char buffer[4096];
+	int received_any = 0;
+
+	if (network_events_fd < 0)
+		return 0;
+
+	for (;;) {
+		ssize_t received = recv(network_events_fd, buffer, sizeof(buffer),
+					MSG_DONTWAIT);
+		if (received > 0) {
+			received_any = 1;
+			continue;
+		}
+		if (received < 0 && errno == EINTR)
+			continue;
+		if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+			break;
+		if (received < 0)
+			perror("watchface: route event receive");
+		break;
+	}
+
+	if (received_any)
+		refresh_network_status();
+
+	return received_any;
+}
+
+static const char *
+link_state_text(int state)
+{
+	if (state == 1)
+		return "LINK UP";
+	if (state == 0)
+		return "NO LINK";
+	if (state == -1)
+		return "NOT PRESENT";
+	return "UNKNOWN";
+}
+
+static void
+draw_network_status(void)
+{
+	char line[64];
+
+	GrSetGCForeground(gc, GR_RGB(0, 0, 0));
+	GrFillRect(window, gc, 20, 170, 280, 66);
+
+	snprintf(line, sizeof(line), "USB GADGET: %s",
+		 link_state_text(usb_link_state));
+	draw_centered_text(line, 184, GR_RGB(110, 220, 255));
+
+	snprintf(line, sizeof(line), "ETHERNET: %s",
+		 link_state_text(ethernet_link_state));
+	draw_centered_text(line, 201, GR_RGB(110, 220, 255));
+
+	if (default_route[0] == '\0')
+		strcpy(line, "DEFAULT ROUTE: none");
+	else if (strcmp(default_route, "?") == 0)
+		strcpy(line, "DEFAULT ROUTE: unavailable");
+	else
+		snprintf(line, sizeof(line), "DEFAULT ROUTE: %.15s",
+			 default_route);
+	draw_centered_text(line, 218, GR_RGB(170, 195, 225));
+
+	if (network_monitor_available)
+		draw_centered_text("TAP SCREEN TO CYCLE WATCH FACES", 235,
+				   GR_RGB(110, 130, 160));
+	else
+		draw_centered_text("NETWORK EVENT MONITOR UNAVAILABLE", 235,
+				   GR_RGB(255, 180, 90));
 }
 
 /* Renders AM/PM indicator pill at top right */
@@ -592,16 +772,16 @@ draw_telemetry_overlay(const struct tm *local, int full_redraw)
 	else
 		snprintf(utc_str, sizeof(utc_str), "UTC CLOCK:  unavailable");
 
-	/* Clear text area on black background */
+	/* Clear telemetry and network status text on black background */
 	GrSetGCForeground(gc, GR_RGB(0, 0, 0));
-	GrFillRect(window, gc, 20, 60, 280, 130);
+	GrFillRect(window, gc, 20, 60, 280, 176);
 
 	draw_centered_text(time_str, 78, GR_RGB(240, 246, 255));
 	draw_centered_text(utc_str, 98, GR_RGB(160, 185, 215));
 	draw_centered_text(uptime_str, 120, GR_RGB(110, 240, 180));
 	draw_centered_text(load_str, 142, GR_RGB(255, 200, 90));
 	draw_centered_text(mem_str, 164, GR_RGB(140, 215, 255));
-	draw_centered_text("TAP SCREEN TO CYCLE WATCH FACES", 216, GR_RGB(110, 130, 160));
+	draw_network_status();
 }
 
 /* Master modular Watch Face array (Expandable table) */
@@ -901,6 +1081,7 @@ main(int argc, char *argv[])
 
 	/* Load default file configuration */
 	load_configuration();
+	setup_network_events();
 
 	/* Parse optional command line flags */
 	for (i = 1; i < argc; i++) {
@@ -962,8 +1143,10 @@ main(int argc, char *argv[])
 		time_t now_time;
 		struct tm *local_tm;
 		int force_full = 0;
+		int network_changed;
 
 		GrGetNextEventTimeout(&event, 1000L);
+		network_changed = process_network_events();
 
 		if (event.type == GR_EVENT_TYPE_CLOSE_REQ) {
 			GrClose();
@@ -1006,6 +1189,9 @@ main(int argc, char *argv[])
 			   local_tm->tm_min != last_minute ||
 			   local_tm->tm_hour != (cfg_12hour ? (last_display_hour % 12) : last_display_hour)) {
 			render_face(local_tm, 0);
+		} else if (network_changed &&
+			   current_face_idx == FACE_REAL_TELEMETRY) {
+			draw_network_status();
 		}
 	}
 }
