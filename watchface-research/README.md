@@ -1,60 +1,75 @@
 # TomTom OpenTom watch-face handoff
 
-This folder is a small, portable working set for Gemini to review and update the
-watch-face app. It contains the current relevant project files and API/build
-context, not a full copy of the 1.3 GB OpenTom checkout.
+This directory is the focused work area for Gemini. It contains the current
+watch-face source, Nano-X API/build context, device/kernel evidence, and the
+visual reference. Keep new work under `watchface-research/project/` using the
+existing project-relative paths.
 
-## Target and project
+## Target and build
 
-- Device: TomTom ONE v6, model ID 19; reports S3C2412-class hardware.
-- Display: 320x240 framebuffer, 16 bpp on the running image; Nano-X/Microwindows.
-- Project: `https://github.com/LeddaZ/OpenTom`
-- Checked-out commit when this handoff was prepared:
-  `ad2646cfd48dd49f2ecfe785077a245ecb7457de`
-- Local build uses the bundled `gcc-3.3.4_glibc-2.3.2` ARM cross-toolchain.
-- The reference image is `reference/apple-watch-reference.png`.
+- Device: TomTom ONE v6, model ID 19.
+- Reported CPU: Samsung S3C2412; 320x240 framebuffer, Nano-X/Microwindows.
+- OpenTom source: LeddaZ/OpenTom at commit
+  `ad2646cfd48dd49f2ecfe785077a245ecb7457de`.
+- Toolchain: bundled `gcc-3.3.4_glibc-2.3.2`, compiler `arm-linux-gcc`.
+- Visual reference: `reference/apple-watch-reference.png`.
+- Read `GEMINI_TASK.md` for scope, constraints, power-button requirement, and
+  requested response.
+
+Only native embedded-compatible C, shell, configuration, and concise
+documentation belong in the implementation. Do not create HTML/CSS/JavaScript
+or browser-only mockups.
 
 ## Contents
 
-- `project/applications/src/tools/watchface.c`: current app source.
-- `project/applications/src/tools/Makefile`: relevant app build rules.
+- `project/applications/src/tools/watchface.c`: current watch application.
+- `project/applications/src/tools/Makefile`: app-specific build rules.
 - `project/src/opentom_skel/start.sh`: persistent startup template.
 - `project/src/opentom_skel/etc/nxmenu.cfg`: persistent menu template.
-- `project/src/opentom_skel/bin/watchface_next`: signal-based page cycler.
-- `microwindows/`: Nano-X headers, build configuration, and client library.
-- `baseline/watchface-current-arm`: stripped ARM executable last staged for
-  the device before this source handoff.
+- `project/src/opentom_skel/bin/watchface_next`: helper that advances the
+  running app by signal.
+- `project/kernel/drivers/barcelona/gpio/gpio.c`: relevant GPIO/power-button
+  source from the OpenTom checkout.
+- `project/applications/src/tools/power_button.c`: current power-button helper.
+- `project/kernel/drivers/char/s3c2410-rtc.c`: relevant RTC driver source.
+- `project/kernel/.config`: build configuration excerpt's full source config.
+- `context/HARDWARE_FACTS.md`: observed device values and config facts.
+- `microwindows/`: Nano-X public headers, config, and client library.
+- `baseline/watchface-current-arm`: ARM executable staged before the latest
+  local source refactor; treat as baseline only, not as the current build.
 - `opentom-license.txt`: project license notice.
 
-Generated binaries and local/device backup archives are not source inputs;
-do not commit or upload backup archives.
+## Findings to keep in mind
 
-## Current behavior and known caveats
+The kernel configuration has `CONFIG_RTC=m`, `CONFIG_S3C2410_RTC=y`, and
+`CONFIG_S3C2410_RTC_SETTIMEOFDAY=y`, but
+`CONFIG_S3C2410_RTC_GETTIMEOFDAY` is disabled. Therefore the hardware/driver
+has RTC support, but that config alone does not establish that a valid
+battery-backed clock is read into system time at boot. The physical RTC node,
+backup-domain power source, and retained time need verification.
 
-The watch-face app has stacked digital, Flow, Flux, and device-info pages.
-Touch input advances pages; the helper script can also advance them by sending
-`SIGUSR1` to the running app. The drawing code tries to update only changed
-regions. Review it for display correctness and CPU usage on the actual
-Microwindows/Nano-X build.
+The power GPIO source currently reports a shutdown event after about
+400–600 ms, and has a separate 10-second pre-PIC-reset path. This does not
+mean the current system waits 10 seconds to shut down. Treat any change to
+make ten seconds the only power-off action as a separate, hardware-sensitive
+kernel behavior change.
 
-The startup template sets `TZ=CEST-2`, assigns USB gadget IP
-`192.168.101.115`, and no longer runs touchscreen calibration automatically.
-The exact time itself is not known to survive power loss. Determine whether
-this device/image has a usable RTC before proposing persistence; if it does
-not, correct time requires an available source such as network time or GPS.
-Do not claim time persistence without demonstrating the hardware/source path.
+Device metadata reported a GPS UART (`ttySAC1`, `gpstype=128`), but that is not
+proof that a valid GPS time/fix is available to user space. Investigate the
+actual GPS stream and timing before relying on it.
 
-USB Ethernet currently works when connected to the Linux host. A router's USB
-port is not automatically a USB host network connection; remote updates and
-NTP require actual network connectivity, routing, and a time/update service.
+USB Ethernet at `192.168.101.115` was observed only while connected to a Linux
+host. A router USB connector is not necessarily a USB Ethernet host; there is
+no verified router internet, NTP, DNS, or remote-update setup yet.
 
-The power-button handler currently launches suspend behavior. Power-button
-remapping is deliberately out of scope and must not be applied.
+The project startup currently uses `TZ=CEST-2`; replace that with a real
+`Europe/Paris` timezone rule if the root filesystem includes zone data or
+otherwise provide a tested daylight-saving-aware solution.
 
-## Build in the full OpenTom checkout
+## Build in the full checkout
 
-This handoff omits the large cross-toolchain and sysroot. In the full project
-checkout, with its dependencies present:
+This handoff is intentionally compact and does not include the 211 MB
+cross-toolchain or the complete sysroot. In a full LeddaZ/OpenTom checkout:
 
 ```sh
 cd /path/to/LeddaZ-OpenTom
@@ -62,10 +77,6 @@ source get_cross_env.sh
 make -B -C applications/src/tools watchface
 ```
 
-The expected compiler is `arm-linux-gcc` from the bundled GCC 3.3.4 toolchain;
-the app links Nano-X and `libm`. Validate a proposed source change with the
-repository's exact cross-compiler and check the resulting ELF is 32-bit ARM.
-
-The files under `project/` preserve their paths relative to the repository
-root, so Gemini's proposed changes can be copied back to matching paths in the
-full checkout for a real build.
+Check warning output and confirm the result is a 32-bit ARM ELF. Do not install
+the result, modify `ttsystem`, rebuild kernel modules, or reboot the device as
+part of the Gemini task.
