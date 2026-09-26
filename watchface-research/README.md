@@ -31,10 +31,13 @@ or browser-only mockups.
   `project/WATCHFACE_SPEC.md` for behavior/validation status.
 - `project/src/opentom_skel/etc/watchface.cfg`: default 12-hour horizontal
   layout, AM/PM indicator, and initial face.
-- `project/src/opentom_skel/bin/watchface_next`: signal-based face switch.
-- `project/src/opentom_skel/etc/nxmenu.cfg`: watch-face menu entry.
+- `project/src/opentom_skel/bin/watchface_next`: cycles the running face, or
+  starts the app if it is not running.
+- `project/src/opentom_skel/etc/nxmenu.cfg`: menu action to advance the face
+  without opening a duplicate app.
 - `project/applications/src/tools/Makefile`: app-specific build rules.
-- `project/src/opentom_skel/start.sh`: persistent startup template.
+- `project/src/opentom_skel/start.sh`: persistent startup template; launches
+  the configured default face after Nano-X starts.
 - `project/kernel/drivers/barcelona/gpio/gpio.c`: relevant GPIO/power-button
   source from the OpenTom checkout.
 - `project/applications/src/tools/power_button.c`: current power-button helper.
@@ -129,8 +132,10 @@ file /tmp/watchface
 The result should be a warning-clean 32-bit ARM ELF linked against the
 existing Nano-X library. The USB-volume snapshot is stored outside the repo
 at `/home/sepisotoni/tomtom-one-v6-backup-20260926/`; the watchface and its
-configuration have been staged there after a verified backup. The live
-screen has not been inspected since staging.
+configuration were staged there after a verified backup. The user reports
+that the network-status build is now loaded and connected. The new boot
+autostart/menu behavior is only in this repository until the updated startup
+files are installed.
 
 Do not replace `ttsystem` or reboot the device using the available
 `2.6.13-LeddaZ` build; it does not match the running `2.6.13-tt190943` kernel.

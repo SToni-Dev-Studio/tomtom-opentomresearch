@@ -2,8 +2,8 @@
 
 set -- $(pidof watchface)
 if [ -z "$1" ]; then
-	echo "watchface is not running" >&2
-	exit 1
+	watchface &
+	exit 0
 fi
 
 kill -USR1 "$1"

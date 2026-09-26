@@ -30,10 +30,12 @@ The default is **12-hour, horizontal `HH:MM`** with an AM/PM badge; on the
 hour, the hour digits expand and the minutes are omitted. Configuration can
 select horizontal or stacked layout, 12/24-hour time, AM/PM visibility, and
 the initial face. Command-line switches override layout and time-format
-settings. A touchscreen button-down cycles faces; `watchface_next` sends
-`SIGUSR1` to the running app to do the same. Face transitions and exposure
-events redraw the face, while ordinary updates redraw changed digit/text
-regions; the aqua accent animates once per second.
+settings. The startup template launches the configured default face after
+Nano-X starts. A touchscreen button-down cycles faces; `watchface_next`
+sends `SIGUSR1` to the running app, or starts it if it is not running. The
+menu invokes this helper so it will not open a duplicate instance. Face
+transitions and exposure events redraw the face, while ordinary updates
+redraw changed digit/text regions; the aqua accent animates once per second.
 
 Telemetry reads uptime, load averages, memory, local/UTC time, and network
 state from Linux interfaces. It distinguishes the `usb0` gadget link and
@@ -47,11 +49,12 @@ wait remains for clock and telemetry updates.
 
 The network-enabled source has been cross-compiled warning-free with the
 bundled ARM GCC 3.3.4 and staged to the device's USB storage along with the
-12-hour horizontal configuration. Runtime link reporting and the new face
-geometry have not yet been verified on the physical screen. A prior device
-measurement of the older running app was 696 kB RSS with no CPU tick increase
-over one 10-second idle sample; it does not validate this version's runtime
-usage.
+12-hour horizontal configuration. The user reports the app is now loaded and
+connected; link reporting and face geometry have not been independently
+verified. Boot autostart and the revised menu helper are in the repository
+but have not been installed on the running device. A prior device measurement
+of the older running app was 696 kB RSS with no CPU tick increase over one
+10-second idle sample; it does not validate this version's runtime usage.
 
 ## Future work and limits
 
@@ -72,9 +75,9 @@ screen can verify final geometry, touch behavior, and visual quality.
 
 - The app uses the supplied Nano-X API and C89-style constructs compatible
   with the bundled ARM GCC 3.3.4.
-- The USB volume's startup script and power helper were not changed:
-  the separate 10-second GPIO/power-button draft is not built for the
-  verified `2.6.13-tt190943` kernel, and the available kernel build reports
-  `2.6.13-LeddaZ`.
+- The startup template only adds watchface autostart; it does not change the
+  device's power-button behavior. The separate 10-second GPIO/power-button
+  draft is not built for the verified `2.6.13-tt190943` kernel, and the
+  available kernel build reports `2.6.13-LeddaZ`.
 - The upstream repository's `TomTom 1 Project/` vendor backup remains
   excluded from this research repository.

@@ -43,5 +43,8 @@ do
 		nanowm &
 	}
 	sleep 1
+	if ! pidof watchface >/dev/null 2>&1; then
+		watchface &
+	fi
 	nxmenu $DIST/etc/nxmenu.cfg >$DIST/logs/nxmenu.log 2>&1
 done
