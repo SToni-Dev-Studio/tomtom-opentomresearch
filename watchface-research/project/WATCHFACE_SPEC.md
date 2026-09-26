@@ -51,10 +51,12 @@ The network-enabled source has been cross-compiled warning-free with the
 bundled ARM GCC 3.3.4 and staged to the device's USB storage along with the
 12-hour horizontal configuration. The user reports the app is now loaded and
 connected; link reporting and face geometry have not been independently
-verified. Boot autostart and the revised menu helper are in the repository
-but have not been installed on the running device. A prior device measurement
-of the older running app was 696 kB RSS with no CPU tick increase over one
-10-second idle sample; it does not validate this version's runtime usage.
+verified. The C updater, package, boot autostart, revised menu, and face
+switch helper are staged on USB storage; the boot/menu changes take effect
+after the next boot and the updater can then be selected from the menu. A
+prior device measurement of the older running app was 696 kB RSS with no CPU
+tick increase over one 10-second idle sample; it does not validate this
+version's runtime usage.
 
 ## Future work and limits
 
@@ -62,9 +64,12 @@ There is no settings page and no live config reload yet; edits to
 `watchface.cfg` take effect when the app is restarted. The overlay callback is
 the extension point for future local weather or media providers; do not
 fabricate values or add background polling. Keep future extensions native C
-and avoid JSON/runtime settings until the UI behavior is designed. A
-transactional live updater is not included; preserve the prior executable
-before swapping app files and keep all kernel/`ttsystem` work separate.
+and avoid JSON/runtime settings until the UI behavior is designed. The
+on-device C updater verifies a strict SHA-256 manifest, makes dated rollback
+copies, replaces only `bin/watchface` and `etc/watchface.cfg`, and restarts
+the app. Its checksums detect accidental corruption, not a maliciously
+replaced package and manifest. The package must be staged locally; remote
+router updates and kernel/`ttsystem` updates are intentionally unsupported.
 
 The incoming spec's hard RAM/CPU ceilings and sub-millisecond rendering claim
 are not verified and are intentionally not repeated as guarantees. Build
@@ -75,9 +80,10 @@ screen can verify final geometry, touch behavior, and visual quality.
 
 - The app uses the supplied Nano-X API and C89-style constructs compatible
   with the bundled ARM GCC 3.3.4.
-- The startup template only adds watchface autostart; it does not change the
-  device's power-button behavior. The separate 10-second GPIO/power-button
-  draft is not built for the verified `2.6.13-tt190943` kernel, and the
-  available kernel build reports `2.6.13-LeddaZ`.
+- The startup template preserves the device's existing
+  `power_button -b bin/suspend bin/suspend` behavior while adding watchface
+  autostart. The separate 10-second GPIO/power-button draft is not built for
+  the verified `2.6.13-tt190943` kernel, and the available kernel build
+  reports `2.6.13-LeddaZ`.
 - The upstream repository's `TomTom 1 Project/` vendor backup remains
   excluded from this research repository.

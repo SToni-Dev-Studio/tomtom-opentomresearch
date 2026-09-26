@@ -29,6 +29,11 @@ or browser-only mockups.
   12-hour horizontal default, config options, event-driven USB/Ethernet and
   route status on the telemetry page, and partial updates. See
   `project/WATCHFACE_SPEC.md` for behavior/validation status.
+- `project/applications/src/tools/watchface_update.c`: on-device C updater
+  for the watchface and config only; verifies SHA-256, makes rollback copies,
+  and restarts the watchface.
+- `update-package/`: checksummed payload for staging under
+  `/mnt/sdcard/opentom/update/`.
 - `project/src/opentom_skel/etc/watchface.cfg`: default 12-hour horizontal
   layout, AM/PM indicator, and initial face.
 - `project/src/opentom_skel/bin/watchface_next`: cycles the running face, or
@@ -133,9 +138,14 @@ The result should be a warning-clean 32-bit ARM ELF linked against the
 existing Nano-X library. The USB-volume snapshot is stored outside the repo
 at `/home/sepisotoni/tomtom-one-v6-backup-20260926/`; the watchface and its
 configuration were staged there after a verified backup. The user reports
-that the network-status build is now loaded and connected. The new boot
-autostart/menu behavior is only in this repository until the updated startup
-files are installed.
+that the network-status build is loaded and connected. A later full-volume
+backup before staging the updater is
+`/home/sepisotoni/tomtom-one-v6-backup-20260926/usb-files-pre-updater-20260926T2110.tar.gz`.
+The C updater, checksummed package, startup autostart, face-switch helper,
+and menu entry have now been copied to the mounted TomTom storage. The new
+startup and menu behavior takes effect on the next device boot. The startup
+retains the existing power-button command. The updater only replaces the
+watchface and its config; it does not update the kernel or power-button code.
 
 Do not replace `ttsystem` or reboot the device using the available
 `2.6.13-LeddaZ` build; it does not match the running `2.6.13-tt190943` kernel.
