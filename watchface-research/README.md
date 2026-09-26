@@ -26,6 +26,8 @@ or browser-only mockups.
 ## Contents
 
 - `project/applications/src/tools/watchface.c`: current watch application.
+- `project/WATCHFACE_SPEC.md`: compatibility-reviewed watch-face design notes;
+  separates incoming future proposals from implemented behavior.
 - `project/applications/src/tools/Makefile`: app-specific build rules.
 - `project/src/opentom_skel/start.sh`: persistent startup template.
 - `project/src/opentom_skel/etc/nxmenu.cfg`: persistent menu template.
