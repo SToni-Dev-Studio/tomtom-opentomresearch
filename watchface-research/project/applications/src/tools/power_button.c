@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <stdlib.h>
 #include <linux/types.h>
 #include <stdio.h>
@@ -35,10 +36,12 @@ int resetStatus(int devHWStatus)
 	return 0;
 }
 
-int waitButton(int devHWStatus, char *envp[], char *bjob, char *ljob)
+int waitButton(int devHWStatus, char *envp[], int poweroff_button,
+	       char *bjob, char *ljob)
 {
 	int result, cpid;
 	char *job;
+	UINT32 status = 0;
 
 	while (1) {
 		resetStatus(devHWStatus);
@@ -48,6 +51,15 @@ int waitButton(int devHWStatus, char *envp[], char *bjob, char *ljob)
 		}
 		job = ljob;
 		if (result & ID_BUTTON) {
+			if (poweroff_button) {
+				sync();
+				if (ioctl(devHWStatus, IOW_POKE_RESET_BUTTON, &status) < 0) {
+					fprintf(stderr, "Could not power off: %s\n", strerror(errno));
+					return -1;
+				}
+				fprintf(stderr, "Power-off request returned unexpectedly\n");
+				return -1;
+			}
 			job = bjob;
 		}
 
@@ -74,8 +86,6 @@ int waitButton(int devHWStatus, char *envp[], char *bjob, char *ljob)
 
 int main(int argc, char **argv, char *envp[])
 {
-	UINT32 status = 0;
-
 	int fd = open("/dev/hwstatus", O_RDONLY);
 	if (fd == -1) {
 		perror("/dev/hwstatus");
@@ -89,10 +99,16 @@ int main(int argc, char **argv, char *envp[])
 			}
 			printf("Resetting ON/OFF state: OK\n");
 		} else if (strncmp(argv[1], "-b", 2) == 0) {
-			return waitButton(fd, envp, (argc > 2 ? argv[2] : NULL), (argc > 3 ? argv[3] : NULL));
+			return waitButton(fd, envp, 0,
+					  (argc > 2 ? argv[2] : NULL),
+					  (argc > 3 ? argv[3] : NULL));
+		} else if (strncmp(argv[1], "-p", 2) == 0) {
+			return waitButton(fd, envp, 1, NULL,
+					  (argc > 2 ? argv[2] : NULL));
 		} else {
 			printf("Usage: %s [-r]\n", argv[0]);
 			printf("Usage: %s -b [button_command [low_batt_command]]\n", argv[0]);
+			printf("Usage: %s -p [low_batt_command]\n", argv[0]);
 			return -1;
 		}
 	} else {

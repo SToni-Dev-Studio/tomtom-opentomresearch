@@ -36,11 +36,12 @@ CONFIG_S3C2410_RTC_SETTIMEOFDAY=y
 The kernel source includes `project/kernel/drivers/char/s3c2410-rtc.c`. The
 SoC RTC driver supports register access, but the GETTIMEOFDAY option that
 reads RTC time into system time is disabled in this config; SETTIMEOFDAY
-enables setting the RTC from system time. Determine whether the running image
-matches this exact config and whether the firmware/init process separately
-reads the RTC. Prior interactive checks did not confirm `/dev/rtc` or
-`/proc/driver/rtc`; treat physical RTC availability and retention as
-unverified until tested.
+enables setting the RTC from system time. In a live read-only check, both
+`/dev/rtc` and `/proc/driver/rtc` existed. After setting system time from the
+host, the device reported `2026-09-26 16:37 UTC`, while the RTC still reported
+`2000-01-03 00:23` (`rtc_epoch: 1900`). `/sbin/hwclock` is a BusyBox symlink,
+but it was not run. The RTC has not been written or tested across power-off;
+retention and startup synchronization remain unverified.
 
 A device battery may keep the RTC backup domain alive, but merely having an
 internal battery or RTC hardware does not establish correct time retention.
@@ -56,20 +57,38 @@ From `project/kernel/drivers/barcelona/gpio/gpio.c`:
 ```c
 #define GPIO_POLL_DELAY (HZ / 5)     /* 5 polls / sec */
 #define GPIO_PREPIC_TIMEOUT (10 * 5) /* 10 seconds */
-#define GPIO_SHUTDOWN_TIMEOUT (2)    /* 400 ms. Actual event is sent between 400-600 ms*/
+#define GPIO_SHUTDOWN_TIMEOUT (2)    /* original: about 400-600 ms */
 ```
 
-The driver independently handles a normal ON/OFF status event after
-`GPIO_SHUTDOWN_TIMEOUT` and a 10-second pre-PIC reset/suicide path when the
-platform indicates that path is supported. `applications/src/tools/power_button.c`
-polls `/dev/hwstatus` and executes the configured button/low-battery commands;
-the OpenTom startup template currently supplies `bin/suspend` for both.
+The driver independently handles the normal ON/OFF status event and the
+10-second pre-PIC reset/suicide path when supported by the platform. The
+research copy now has an uncommitted draft changing the normal event threshold
+to 50 polls (about 10 seconds), adding `power_button -p` to request the guarded
+power-pin ioctl on a button event, and wiring that option into the copied
+startup template. Low-battery handling still invokes `bin/suspend`.
 
-Therefore current source does **not** mean ordinary power-off waits ten
-seconds. Making a short press change faces and reserving power-off for a
-10-second hold would require carefully changing the GPIO event/shutdown
-behavior and validating interactions with suspend, low battery, charger, and
-PIC reset. Do not implement based on the timeout constant alone.
+This draft is not installed on the device. The running device still reports
+the original `power_button -b bin/suspend bin/suspend` invocation. The guarded
+ioctl can decline to shut down depending on real-shutdown pin, PIC, and
+USB-host-detect state; the kernel source warns against suicide shutdown in
+some charger/PIC configurations. Model 19's source pin table has a `PWR_RST`
+pin, but successful and safe shutdown on this exact unit has not been tested.
+Do not install or exercise the draft while external power is connected.
+
+The user-space handler draft initially had missing `wait()` declaration and
+an unused variable; those were fixed, and it now cross-compiles with the
+bundled ARM GCC using `-Wall -Werror`. The kernel module/driver has not been
+built or hardware-tested.
+
+## Live resource sample
+
+While the watch face was running on the connected TomTom, `/proc/678/status`
+reported `VmRSS: 696 kB`, `VmSize: 2260 kB`, `VmData: 20 kB`, and one thread.
+The process remained sleeping with `SleepAVG: 98%`. Its `/proc/678/stat` user
+and system CPU tick counters did not change during one 10-second idle sample.
+These are point-in-time/idle observations, not a sustained or face-transition
+benchmark; they do not prove the resource ceiling under every update pattern.
+The whole device reported 30,016 kB total RAM and 20,228 kB free at that time.
 
 ## GPS/time facts
 
@@ -86,6 +105,14 @@ Linux host. A host assigns/routs networking in that arrangement. A generic
 router USB connector does not necessarily implement USB Ethernet host mode,
 DHCP, forwarding, DNS, internet access, or NTP. No always-on router connection
 or automatic update channel has been validated.
+
+The currently attached host interface `enxaa5f8bb8bb14` is up and can ping
+the device; Telnet port 23 is reachable and SSH port 22 is refused. The host
+USB interface now has `192.168.101.114/32`, with a host route to
+`192.168.101.115/32` using source `.114`; ping and Telnet were verified after
+the change. The device-side `.115` address was already responding, so no
+device IP reassignment was needed. This is a live host network configuration
+and may need to be reapplied after USB reconnection or host reboot.
 
 ## Timezone
 

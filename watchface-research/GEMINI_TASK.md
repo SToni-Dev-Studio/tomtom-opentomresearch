@@ -41,13 +41,12 @@ of assuming. The supplied running-build config excerpt shows:
 - `CONFIG_S3C2410_RTC_SETTIMEOFDAY=y`
 - `CONFIG_S3C2410_RTC_GETTIMEOFDAY` is disabled.
 
-Investigate the supplied RTC driver and startup behavior: determine whether
-this build can read/write the RTC, whether `/dev/rtc` is actually created, and
-whether the RTC backup domain remains powered by the device battery when the
-device is shut down. A driver option or battery presence alone is not proof
-that the clock persists. Propose a safe test: set a known time, shut down,
-wait, power on, and compare RTC/system time. Do not reboot or operate the
-physical device as part of your response.
+Investigate the supplied RTC driver and startup behavior. Live read-only
+inspection already found `/dev/rtc` and `/proc/driver/rtc`, but the RTC read
+`2000-01-03 00:23` after system time had been set to `2026-09-26 16:37 UTC`.
+The RTC has not been written or tested across shutdown. Determine the
+remaining software/build questions and propose a safe retention test; do not
+write the RTC, reboot, or otherwise operate the physical device.
 
 The hardware metadata observed on this model reports GPS at `ttySAC1` and
 `gpstype=128`, but do not assume a valid GPS fix or that its NMEA stream is
@@ -61,21 +60,21 @@ when a genuine routed network is available. Use the `Europe/Paris` timezone
 ## Power button: ten-second hold to turn off
 
 The owner specifically wants the device to power off only after the power
-button is held continuously for 10 seconds. Research the supplied
-`kernel/drivers/barcelona/gpio/gpio.c` and
-`applications/src/tools/power_button.c` before proposing an implementation.
-The current source has a 400–600 ms `GPIO_SHUTDOWN_TIMEOUT`, while
+button is held continuously for 10 seconds. The research copy already
+contains an uncommitted draft in `kernel/drivers/barcelona/gpio/gpio.c`,
+`applications/src/tools/power_button.c`, and `src/opentom_skel/start.sh`.
+Review those files and the original behavior carefully. The original GPIO
+source has a 400–600 ms `GPIO_SHUTDOWN_TIMEOUT`, while
 `GPIO_PREPIC_TIMEOUT` is 10 seconds; do not confuse these independent paths.
-The current startup invokes the `power_button` utility with suspend commands.
+The live device still runs the original
+`power_button -b bin/suspend bin/suspend` command.
 
-Design the desired behavior deliberately: short press must not turn the unit
-off; face navigation may remain on touchscreen taps; a sustained 10-second
-press is the only intentional power-off action. Account for low-battery,
-suspend, hardware-PIC reset, and charger-connected behavior. If this requires
-a kernel GPIO-driver change, identify it clearly and explain rebuild/brick
-risk; do not silently patch kernel code, change the shipped image, or claim
-the new behavior works without hardware testing. Return a small patch and a
-test plan rather than applying it to the physical TomTom.
+Assess whether the existing draft actually implements the requirement and
+identify any correctness/safety issues. Account for low-battery, suspend,
+hardware-PIC reset, USB-host, and charger-connected behavior. Do not expand the
+patch, change the shipped image, install anything, or power off/reboot the
+physical TomTom. State the target-kernel rebuild/brick risk and give a safe
+test plan. Any source change must remain in this research copy.
 
 ## Network and update limits
 
@@ -91,11 +90,14 @@ routing, and secure update mechanism are proven.
 Return:
 
 1. Changed file paths and a focused patch.
-2. Build/check commands and actual results.
-3. Evidence-backed RTC/GPS findings and remaining physical tests.
+2. Build/check commands and actual results, distinguishing the already
+   successful user-space cross-compile from the unbuilt kernel driver.
+3. Evidence-backed RTC/GPS findings, including the live RTC reading, and
+   remaining physical tests.
 4. Whether a 10-second-only power-off can be achieved safely, which source
    path must change, and risks.
 5. Explicitly say no device-side installation/reboot was performed.
 
-Do not change `ttsystem`, USB kernel modules, or the physical device. Keep
-power-button work as a proposed source patch until it can be tested safely.
+Do not change `ttsystem`, USB kernel modules, RTC state, or the physical
+device. Keep the power-button source draft uncommitted and uninstalled until
+it can be tested safely.

@@ -57,7 +57,7 @@ int rds_tmc_hack_enabled = 0; // global shared with buspower.c
 
 #define GPIO_POLL_DELAY (HZ / 5)     /* 5 polls / sec */
 #define GPIO_PREPIC_TIMEOUT (10 * 5) /* 10 seconds */
-#define GPIO_SHUTDOWN_TIMEOUT (2)    /* 400 ms. Actual event is sent between 400-600 ms*/
+#define GPIO_SHUTDOWN_TIMEOUT (10 * 5) /* Require a 10-second button hold */
 
 /* Forward declarations */
 static void gpio_status_poll( void *data );

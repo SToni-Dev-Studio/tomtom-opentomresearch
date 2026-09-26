@@ -33,7 +33,7 @@ export NANOX_YRES=`fbset -s | grep geometry | if read x x yres x; then echo $yre
 cd $DIST
 
 # Suspend when the power button is pressed or the battery is low
-power_button -b bin/suspend bin/suspend &
+power_button -p bin/suspend &
 
 while /bin/true
 do
