@@ -94,6 +94,15 @@ The project startup currently uses `TZ=CEST-2`; replace that with a real
 `Europe/Paris` timezone rule if the root filesystem includes zone data or
 otherwise provide a tested daylight-saving-aware solution.
 
+The live shell uses BusyBox 1.22.1. A separate BusyBox 1.24.2 ARM build
+candidate, matching source archive, migrated config, and checksums are staged
+under `busybox-upgrade/`. It was built with the supplied ARM GCC/glibc
+toolchain and includes the live device's observed applet set. It is a
+test-only candidate, not a modern/security-current replacement; newer tested
+versions did not build against the legacy headers/runtime. It has not been
+copied to or run on the TomTom. See `busybox-upgrade/README.md` before any
+device-side test.
+
 ## Build in the full checkout
 
 This handoff is intentionally compact and does not include the 211 MB
