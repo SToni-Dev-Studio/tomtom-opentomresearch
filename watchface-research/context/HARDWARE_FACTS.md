@@ -116,7 +116,7 @@ and may need to be reapplied after USB reconnection or host reboot.
 
 ## Timezone
 
-The startup script previously used `TZ=CEST-2`. This is a fixed summer offset,
-not a year-round daylight-saving rule. Prefer a valid Europe/Paris timezone
-database entry if the root filesystem contains zoneinfo; otherwise document
-and test an appropriate compact daylight-saving-aware alternative.
+The revised research startup template uses the POSIX
+`CET-1CEST,M3.5.0/2,M10.5.0/3` rule, which applies Paris daylight-saving
+transitions without relying on a zoneinfo database. This source template has
+not been installed or verified on the device.

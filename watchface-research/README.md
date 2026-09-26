@@ -25,14 +25,15 @@ or browser-only mockups.
 
 ## Contents
 
-- `project/applications/src/tools/watchface.c`: current watch application.
-- `project/WATCHFACE_SPEC.md`: compatibility-reviewed watch-face design notes;
-  separates incoming future proposals from implemented behavior.
+- `project/applications/src/tools/watchface.c`: five native watch-face modes,
+  12-hour horizontal default, config options, telemetry page, and partial
+  updates. See `project/WATCHFACE_SPEC.md` for behavior/validation status.
+- `project/src/opentom_skel/etc/watchface.cfg`: default 12-hour horizontal
+  layout, AM/PM indicator, and initial face.
+- `project/src/opentom_skel/bin/watchface_next`: signal-based face switch.
+- `project/src/opentom_skel/etc/nxmenu.cfg`: watch-face menu entry.
 - `project/applications/src/tools/Makefile`: app-specific build rules.
 - `project/src/opentom_skel/start.sh`: persistent startup template.
-- `project/src/opentom_skel/etc/nxmenu.cfg`: persistent menu template.
-- `project/src/opentom_skel/bin/watchface_next`: helper that advances the
-  running app by signal.
 - `project/kernel/drivers/barcelona/gpio/gpio.c`: relevant GPIO/power-button
   source from the OpenTom checkout.
 - `project/applications/src/tools/power_button.c`: current power-button helper.
@@ -92,9 +93,9 @@ with ping and Telnet; this host-side route may need reapplying after a
 reconnection. A router USB connector is not necessarily a USB Ethernet host;
 there is no verified router internet, NTP, DNS, or remote-update setup yet.
 
-The project startup currently uses `TZ=CEST-2`; replace that with a real
-`Europe/Paris` timezone rule if the root filesystem includes zone data or
-otherwise provide a tested daylight-saving-aware solution.
+The project startup template uses a POSIX CET/CEST rule with daylight-saving
+transitions for Paris, so it does not depend on installed zoneinfo. This
+template is not installed on the device.
 
 The live shell uses BusyBox 1.22.1. A separate BusyBox 1.24.2 ARM build
 candidate, matching source archive, migrated config, and checksums are staged
@@ -105,17 +106,25 @@ versions did not build against the legacy headers/runtime. It has not been
 copied to or run on the TomTom. See `busybox-upgrade/README.md` before any
 device-side test.
 
-## Build in the full checkout
+## Build check without replacing the full checkout's source
 
-This handoff is intentionally compact and does not include the 211 MB
-cross-toolchain or the complete sysroot. In a full LeddaZ/OpenTom checkout:
+The handoff does not include the cross-toolchain. Use the bundled
+`LeddaZ-OpenTom` toolchain, but compile this staged source directly to `/tmp`
+so the full checkout's existing local watchface work is not overwritten:
 
 ```sh
+HANDOFF=/path/to/tomtom-opentomresearch/watchface-research
 cd /path/to/LeddaZ-OpenTom
 source get_cross_env.sh
-make -B -C applications/src/tools watchface
+"$CC" -O2 -Wall -Werror \
+  -I"$ROOT/kernel/include" \
+  -I"$HANDOFF/microwindows" \
+  -o /tmp/watchface \
+  "$HANDOFF/project/applications/src/tools/watchface.c" \
+  -L"$HANDOFF/microwindows" -lnano-X -lm
+file /tmp/watchface
 ```
 
-Check warning output and confirm the result is a 32-bit ARM ELF. Do not install
-the result, modify `ttsystem`, rebuild kernel modules, or reboot the device as
-part of the Gemini task.
+The expected result is a warning-clean 32-bit ARM ELF. Do not install the
+result, modify `ttsystem`, rebuild kernel modules, or reboot the device as
+part of this handoff work.

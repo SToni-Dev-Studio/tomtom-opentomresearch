@@ -17,19 +17,17 @@ configuration, and concise documentation files.
 
 ## Watch display
 
-- Design a clean, colorful, readable set of clock faces inspired by the image:
-  stacked large digital hour/minute digits, tasteful background/color, no
-  enclosing box.
-- Provide separate modular faces/pages so time, status, and later navigation
-  information can be extended without rewriting a monolithic renderer.
-- A tap anywhere on the screen cycles faces.
-- Avoid flicker and waste: repaint the full display only on face changes or
-  true expose/resize events; otherwise redraw only the digits/text/ring
-  segments that changed. Keep idle CPU use low.
-- Build with the repository's ARM GCC 3.3.4 / Nano-X environment where
-  available. Check C compatibility with that compiler, warning-clean output
-  where possible, and a 32-bit ARM executable. Do not claim device validation
-  without testing on the physical device.
+The native app is staged at
+`project/applications/src/tools/watchface.c`. It provides five face styles,
+horizontal or stacked layout, 12/24-hour display, optional AM/PM, a config
+file, tap-to-cycle, and partial updates. The default is 12-hour horizontal.
+Review or extend this code only when asked, and do not claim the staged source
+has been installed or visually validated on the physical LCD.
+
+Build with the repository's ARM GCC 3.3.4 / Nano-X environment. Check C
+compatibility, warning output, and 32-bit ARM output. Keep the UI native; do
+not create HTML/CSS/JavaScript or browser mockups. Do not claim unsupported
+CPU/RAM guarantees; measure the actual binary and active faces on-device.
 
 ## Correct time across reboot
 

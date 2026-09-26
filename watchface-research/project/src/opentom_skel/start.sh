@@ -14,7 +14,7 @@ export TSLIB_CALIBFILE=$DIST/etc/pointercal
 
 export PATH=$PATH:$DIST/bin
 export LD_LIBRARY_PATH=$DIST/lib
-export TZ=CEST-2
+export TZ='CET-1CEST,M3.5.0/2,M10.5.0/3'
 
 ln -s $DIST/lib/libz.so.1 /lib/libz.so
 

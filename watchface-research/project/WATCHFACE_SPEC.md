@@ -1,8 +1,8 @@
 # Watch-face design notes and compatibility review
 
-This document carries forward the useful watch-face ideas from
-`sepisotoni/tomtom-opentom-research`, while distinguishing proposals from
-features already present in the OpenTom checkout.
+This document records the watch-face implementation now staged in this
+research repository and distinguishes implemented source behavior from
+physical-device validation.
 
 ## Target constraints
 
@@ -14,26 +14,9 @@ features already present in the OpenTom checkout.
 - Keep implementation native and small. Do not add web assets, HTML, CSS,
   JavaScript, or desktop-only dependencies.
 
-## Current implementation versus incoming proposal
+## Implemented source behavior
 
-The existing `applications/src/tools/watchface.c` in the full OpenTom
-checkout has four face modes and changes faces on touchscreen taps. The
-incoming repository adds **no watch-face implementation code**: its changes
-are an expanded design/specification document plus ignore rules and a
-separate TomTom device backup. The five named faces, layout modes, 12/24-hour
-options, configuration file, and minute animation below are future design
-proposals, not features verified in the running app.
-
-The display should remain modular and repaint only changed regions where
-practical. Face changes and Nano-X expose/resize events may redraw the full
-face. Keep idle processing event-driven with a bounded wait. Avoid claims
-about CPU or memory budgets until measured on the target device: the most
-recent live sample showed 696 kB RSS and no process CPU tick change during
-one 10-second idle interval, not a full-load or face-transition benchmark.
-
-## Proposed face palette
-
-These visual directions from the incoming design may guide future face work:
+`applications/src/tools/watchface.c` contains five selectable visual modes:
 
 | Face | Direction |
 |---|---|
@@ -43,34 +26,40 @@ These visual directions from the incoming design may guide future face work:
 | Sunset | Tangerine and rose accents |
 | Telemetry | Blue accents and only real device data |
 
-The proposal's “zero mock data” constraint is retained: report a value as
-unavailable rather than inventing telemetry.
+The default is **12-hour, horizontal `HH:MM`** with an AM/PM badge; on the
+hour, the hour digits expand and the minutes are omitted. Configuration can
+select horizontal or stacked layout, 12/24-hour time, AM/PM visibility, and
+the initial face. Command-line switches override layout and time-format
+settings. A touchscreen button-down cycles faces; `watchface_next` sends
+`SIGUSR1` to the running app to do the same. Face transitions and exposure
+events redraw the face, while ordinary updates redraw changed digit/text
+regions; the aqua accent animates once per second.
 
-## Deferred options
+Telemetry reads uptime, load averages, memory, and local/UTC time from system
+interfaces. Failed metric reads now display `unavailable`, not zero. The
+implementation uses a one-second event wait. These are source-level
+observations only: the face variants, config parsing, and animation have not
+been installed or visually tested on the device. A prior device measurement
+of the older running app was 696 kB RSS with no CPU tick increase over one
+10-second idle sample; it does not validate this version's runtime usage.
 
-Horizontal/stacked layouts, 12/24-hour display, AM/PM badge, and a persisted
-default face are possible later additions. If implemented, prefer a tiny
-plain-text `key=value` configuration over JSON and validate values with
-defaults for missing/invalid entries. Do not add a settings page or claim
-runtime-editable configuration until its user interaction and reload behavior
-are designed. These options are not a requirement for the current watch-face
-work.
+## Future work and limits
 
-The proposed exact pixel coordinates, typography claims, vector glyph
-storage, sub-millisecond rendering time, and hard RAM/CPU figures from the
-incoming document have not been verified against the C source, Nano-X
-renderer, or physical display; treat them as mockup targets, not guarantees.
+There is no settings page and no live config reload yet; edits to
+`watchface.cfg` take effect when the app is restarted. Keep future extensions
+native C and avoid JSON/runtime settings until the UI behavior is designed.
+
+The incoming spec's hard RAM/CPU ceilings and sub-millisecond rendering claim
+are not verified and are intentionally not repeated as guarantees. Build
+using the bundled ARM compiler and inspect the output; only the physical
+screen can verify final geometry, touch behavior, and visual quality.
 
 ## Compatibility findings
 
-- The incoming spec correctly targets an old ARM C/Nano-X environment, but
-  makes stronger performance and feature claims than the currently available
-  evidence supports. This document qualifies those claims.
-- The existing watch application uses four faces and supports tap-to-cycle;
-  do not change its behavior to five faces, add configuration, or rework
-  layouts without an explicit implementation request.
-- The incoming repository also contains a large `TomTom 1 Project/` device
-  backup with vendor firmware, application assets, and other proprietary
-  files. Those files are not OpenTom source and are intentionally not copied
-  into this research repository. The spec and relevant design ideas are the
-  only imported content.
+- The app uses the supplied Nano-X API and C89-style constructs compatible
+  with the bundled ARM GCC 3.3.4.
+- The imported upstream startup script and power helper were not copied:
+  startup must preserve the separate 10-second GPIO/power-button draft, and
+  the watchface feature does not require a power-handler change.
+- The upstream repository's `TomTom 1 Project/` vendor backup remains
+  excluded from this research repository.
